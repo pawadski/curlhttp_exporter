@@ -1,0 +1,35 @@
+# define a list of properties youd like returned
+# be wary though that they may not always return numerical values
+# in which case you will get a parsing error in Prometheus
+# https://curl.haxx.se/libcurl/c/curl_easy_getinfo.html (skip the CURLINFO_ part)
+curl_attributes:
+- namelookup_time
+- connect_time
+- starttransfer_time
+- total_time
+- response_code
+- appconnect_time
+- pretransfer_time
+- redirect_time
+- redirect_count
+- size_download
+- speed_download
+- speed_upload
+- request_size
+- header_size
+- ssl_verifyresult
+- os_errno
+options:
+  port: 10080    # listen port
+  max_threads: 2
+curl_settings:
+  # https://curl.haxx.se/libcurl/c/curl_easy_setopt.html
+  # do not set url here please :)
+  # please respect variable types
+  # int  -> int
+  # long -> pass a float
+  # string -> will be evaluated as property name first, passed as string if not found (ie. for headers)
+  followlocation: 1        # follow redirects?
+  connecttimeout: 10       # connect timeout seconds
+  timeout: 10              # second timeout for curl functions
+  ipresolve: ipresolve_v4  # use ipv4? this maps to CURL_IPRESOLVE_V4
