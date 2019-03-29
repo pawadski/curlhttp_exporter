@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # install with openssl export PYCURL_SSL_LIBRARY=openssl
 # packages: python3-devel openssl-devel
-import pycurl, json, yaml, concurrent
+import pycurl, json, yaml, concurrent, dateparser
 from datetime import datetime
 import time 
 import sanic.response
@@ -69,7 +69,7 @@ def getSslInfo(handler):
                 continue
             if attribute in dates:
                 cert['labels'][attribute] = item[1] # human-readable date
-                cert['metrics'][attribute] = int(datetime.strptime(item[1], "%Y-%m-%d %H:%M:%S %Z").timestamp())
+                cert['metrics'][attribute] = int(dateparser.parse(item[1]).timestamp())
                 continue
                 
         certStats.append(cert)
