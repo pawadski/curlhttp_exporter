@@ -2,6 +2,8 @@
 # install with openssl export PYCURL_SSL_LIBRARY=openssl
 # packages: python3-devel openssl-devel
 import pycurl, json, yaml, concurrent
+from datetime import datetime
+import time 
 import sanic.response
 from sanic.log import logger
 from sanic import Sanic 
@@ -23,6 +25,7 @@ def getConfig(path = "config.yml"):
 
 def setOptions(handler):
     global options 
+
     for name, value in options.items():
         # first, check if this property name exists
         attr = None
@@ -44,8 +47,43 @@ def setOptions(handler):
 
             handler.setopt(attr, prop)
 
+def getSslInfo(handler):
+    explode = ['subject', 'issuer']        # to sort into a sub-dict
+    dates = ['start_date', 'expire_date']
+    strings = ['version', 'signature', 'public key algorithm', 'serial number', 'signature algorithm']
+
+    certStats = []
+    for certificate in handler.getinfo(pycurl.INFO_CERTINFO):
+        cert = { 'metrics': {}, 'labels': [] }
+        for item in certificate:
+            attribute = item[0].replace(' ', '_').lower()
+
+            if attribute in explode:
+                for entry in item[1].split(', '):
+                    key, value = entry.split('=')
+                    cert['labels'].append( f'{key.lower()}="{value}"' )
+                # cert[item[0]] = dict( k.split('=') for k in item[1].split(', ') )
+                continue 
+            if attribute in strings:
+                cert['labels'].append( f'{attribute}="{item[1]}"' )
+                continue
+            if attribute in dates:
+                cert['labels'].append( f'human_{attribute}="{item[1]}"' )
+                timestamp = datetime.strptime(item[1], "%Y-%m-%d %H:%M:%S %Z").timestamp()
+                cert['labels'].append( f'{attribute}="{timestamp}"' )
+                cert['metrics'][attribute] = timestamp
+                continue
+                
+        cert['labels'] = ','.join(cert['labels'])
+        certStats.append(cert)
+
+    return certStats 
+
 def getStats(handler):
-    output_stats = {}
+    output_stats = { 'stats': {} }
+
+    if 'opt_certinfo' in options.keys():
+        output_stats['certinfo'] = getSslInfo(handler)
 
     for stat in stats:
         try:
@@ -54,15 +92,27 @@ def getStats(handler):
         except AttributeError:
             attr = "NaN" 
 
-        output_stats[stat] = attr
+        output_stats['stats'][stat] = attr
 
     return output_stats
 
 def convertToMetrics(addr, data):
     output = []
 
-    for name, value in data.items():
-        output.append(f'# TYPE {name} gauge\n# HELP {name} https://curl.haxx.se/libcurl/c/curl_easy_getinfo.html\ncurlhttp_{name}{{target="{addr}"}} {value}')
+    if 'certinfo' in data.keys():
+        output.append(f'# TYPE curlhttp_certinfo gauge\n# HELP curlhttp_certinfo Details from curl certinfo\n')
+        for certificate in data['certinfo']:
+            output.append(f'curlhttp_certinfo{{target="{addr}",{certificate["labels"]}}} 1')
+
+        output.append(f'# TYPE curlhttp_certinfo_expire_date gauge\n# HELP curlhttp_certinfo_expire_date Certificate expiry timestamp\n')
+        for certificate in data['certinfo']:
+            output.append(f'curlhttp_certinfo_expire_date{{target="{addr}",{certificate["labels"]}}} {certificate["metrics"]["expire_date"]}')
+
+
+    #     output.append(f'curlhttp_certinfo')
+
+    for name, value in data['stats'].items():
+        output.append(f'# TYPE curlhttp_{name} gauge\n# HELP curlhttp_{name} https://curl.haxx.se/libcurl/c/curl_easy_getinfo.html\ncurlhttp_{name}{{target="{addr}"}} {value}')
 
     output.append("\n")
 
@@ -84,7 +134,7 @@ def handleRequest(addr):
         return convertToMetrics(addr, { 'curl_errno': e.args[0] })
 
     stats = getStats(c)
-    stats['curl_errno'] = 0
+    stats['stats']['curl_errno'] = 0
     c.close()
 
     return convertToMetrics(addr, stats)
