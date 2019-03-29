@@ -54,27 +54,24 @@ def getSslInfo(handler):
 
     certStats = []
     for certificate in handler.getinfo(pycurl.INFO_CERTINFO):
-        cert = { 'metrics': {}, 'labels': [] }
+        cert = { 'metrics': {}, 'labels': {} }
         for item in certificate:
             attribute = item[0].replace(' ', '_').lower()
 
             if attribute in explode:
                 for entry in item[1].split(', '):
                     key, value = entry.split('=')
-                    cert['labels'].append( f'{key.lower()}="{value}"' )
+                    cert['labels'][ f"{attribute}_{key.lower()}" ] = value
                 # cert[item[0]] = dict( k.split('=') for k in item[1].split(', ') )
                 continue 
             if attribute in strings:
-                cert['labels'].append( f'{attribute}="{item[1]}"' )
+                cert['labels'][attribute] = item[1]
                 continue
             if attribute in dates:
-                cert['labels'].append( f'human_{attribute}="{item[1]}"' )
-                timestamp = datetime.strptime(item[1], "%Y-%m-%d %H:%M:%S %Z").timestamp()
-                cert['labels'].append( f'{attribute}="{timestamp}"' )
-                cert['metrics'][attribute] = timestamp
+                cert['labels'][attribute] = item[1] # human-readable date
+                cert['metrics'][attribute] = int(datetime.strptime(item[1], "%Y-%m-%d %H:%M:%S %Z").timestamp())
                 continue
                 
-        cert['labels'] = ','.join(cert['labels'])
         certStats.append(cert)
 
     return certStats 
@@ -102,14 +99,10 @@ def convertToMetrics(addr, data):
     if 'certinfo' in data.keys():
         output.append(f'# TYPE curlhttp_certinfo gauge\n# HELP curlhttp_certinfo Details from curl certinfo\n')
         for certificate in data['certinfo']:
-            output.append(f'curlhttp_certinfo{{target="{addr}",{certificate["labels"]}}} 1')
-
-        output.append(f'# TYPE curlhttp_certinfo_expire_date gauge\n# HELP curlhttp_certinfo_expire_date Certificate expiry timestamp\n')
-        for certificate in data['certinfo']:
-            output.append(f'curlhttp_certinfo_expire_date{{target="{addr}",{certificate["labels"]}}} {certificate["metrics"]["expire_date"]}')
-
-
-    #     output.append(f'curlhttp_certinfo')
+            labels = ','.join([f'{key}="{value}"' for key, value in certificate['labels'].items()])
+            output.append(f'curlhttp_certinfo{{target="{addr}",{labels}}} 1')
+            output.append(f'curlhttp_certinfo_expire_date{{target="{addr}",signature="{certificate["labels"]["signature"]}"}} {certificate["metrics"]["expire_date"]}')
+            output.append(f'curlhttp_certinfo_start_date{{target="{addr}",signature="{certificate["labels"]["signature"]}"}} {certificate["metrics"]["start_date"]}')
 
     for name, value in data['stats'].items():
         output.append(f'# TYPE curlhttp_{name} gauge\n# HELP curlhttp_{name} https://curl.haxx.se/libcurl/c/curl_easy_getinfo.html\ncurlhttp_{name}{{target="{addr}"}} {value}')
