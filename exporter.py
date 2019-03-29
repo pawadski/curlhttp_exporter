@@ -60,7 +60,7 @@ def getSslInfo(handler):
 
             if attribute in explode:
                 for entry in item[1].split(', '):
-                    key, value = entry.split('=')
+                    key, value = entry.split(' = ')
                     cert['labels'][ f"{attribute}_{key.lower()}" ] = value
                 # cert[item[0]] = dict( k.split('=') for k in item[1].split(', ') )
                 continue 
