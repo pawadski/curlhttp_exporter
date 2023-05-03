@@ -1,0 +1,8 @@
+docker kill curlhttp_exporter
+docker rm curlhttp_exporter
+docker build . -t pawadski/curlhttp_exporter
+docker run -d --name curlhttp_exporter \
+              --network host \
+              --restart always \
+              --publish 10080:10080 \
+              pawadski/curlhttp_exporter
